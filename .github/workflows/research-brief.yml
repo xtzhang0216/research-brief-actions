@@ -76,8 +76,3 @@ jobs:
           fi
           python scripts/generate_research_brief.py --days-back "${DAYS_BACK}" ${EMAIL_FLAG} ${ZOTERO_FLAG}
 
-      - name: Commit generated brief archive
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore: archive research brief"
-          file_pattern: research_briefs/*.md research_briefs/*.bib

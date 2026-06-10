@@ -1,6 +1,6 @@
 ﻿# Research Brief Actions
 
-A GitHub Actions workflow that searches scholarly metadata sources, ranks papers against your research profile, archives a Markdown/BibTeX brief, and optionally emails the result every day.
+A GitHub Actions workflow that searches scholarly metadata sources, ranks papers against your research profile, writes a Markdown/BibTeX brief during each run and optionally emails the result every day.
 
 It is designed to be configured with an AI coding assistant such as Codex or Claude Code. The repository contains no personal email, SMTP server, university domain, API key, or private research profile by default.
 
@@ -9,7 +9,7 @@ It is designed to be configured with an AI coding assistant such as Codex or Cla
 - Searches Crossref and OpenAlex with dependency-free Python.
 - Optionally searches IEEE Xplore when `IEEE_XPLORE_API_KEY` is configured.
 - Scores papers with your own journals, keywords, methods, objectives, and domain terms.
-- Generates `research_briefs/YYYY-MM-DD.md`, `latest.md`, `.bib`, and `latest.bib`.
+- Generates `research_briefs/YYYY-MM-DD.md`, `latest.md`, `.bib`, and `latest.bib` in the runner workspace. Generated files are ignored by default to avoid leaking research interests in public repositories.
 - Sends email through SMTP or SendGrid.
 - Optionally imports selected papers into Zotero through the Zotero Web API.
 - Runs in GitHub Actions, so your local computer can be off.
@@ -169,7 +169,7 @@ Do not commit:
 - Personal email addresses you do not want public.
 - Private generated briefs if they reveal your research interests.
 
-Generated briefs are ignored by default except for `research_briefs/.gitkeep`.
+Generated briefs are ignored by default except for `research_briefs/.gitkeep`. If you want GitHub Actions to commit daily archives, use a private repository first, remove the ignore rules for `research_briefs/*.md` and `research_briefs/*.bib`, then add an auto-commit step.
 
 ## Troubleshooting
 
@@ -182,3 +182,4 @@ Generated briefs are ignored by default except for `research_briefs/.gitkeep`.
 ## License
 
 MIT
+
