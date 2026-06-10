@@ -1,0 +1,83 @@
+﻿name: Research Brief
+
+on:
+  schedule:
+    # Default: 08:30 UTC. Run scripts/configure_project.py or ask your AI assistant
+    # to convert your local send time to UTC and update this cron expression.
+    - cron: "30 8 * * *"
+  workflow_dispatch:
+    inputs:
+      days_back:
+        description: "Search window in days"
+        required: false
+        default: "7"
+      send_email:
+        description: "Send email"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      import_zotero:
+        description: "Import selected papers to Zotero"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: write
+
+jobs:
+  generate-brief:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate research brief
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          RESEARCH_BRIEF_FROM_EMAIL: ${{ secrets.RESEARCH_BRIEF_FROM_EMAIL }}
+          RESEARCH_BRIEF_TO_EMAIL: ${{ secrets.RESEARCH_BRIEF_TO_EMAIL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM_EMAIL: ${{ secrets.SMTP_FROM_EMAIL }}
+          SMTP_TO_EMAIL: ${{ secrets.SMTP_TO_EMAIL }}
+          SMTP_USE_SSL: ${{ secrets.SMTP_USE_SSL }}
+          SMTP_STARTTLS: ${{ secrets.SMTP_STARTTLS }}
+          SMTP_RETRIES: ${{ secrets.SMTP_RETRIES }}
+          IEEE_XPLORE_API_KEY: ${{ secrets.IEEE_XPLORE_API_KEY }}
+          ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
+          ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
+          ZOTERO_GROUP_ID: ${{ secrets.ZOTERO_GROUP_ID }}
+          ZOTERO_COLLECTION_KEY: ${{ secrets.ZOTERO_COLLECTION_KEY }}
+          DAYS_BACK: ${{ github.event.inputs.days_back || '7' }}
+          SEND_EMAIL: ${{ github.event.inputs.send_email || 'true' }}
+          IMPORT_ZOTERO: ${{ github.event.inputs.import_zotero || 'false' }}
+        run: |
+          EMAIL_FLAG=""
+          if [ "${SEND_EMAIL}" = "false" ]; then
+            EMAIL_FLAG="--no-email"
+          fi
+          ZOTERO_FLAG=""
+          if [ "${IMPORT_ZOTERO}" = "true" ]; then
+            ZOTERO_FLAG="--zotero"
+          fi
+          python scripts/generate_research_brief.py --days-back "${DAYS_BACK}" ${EMAIL_FLAG} ${ZOTERO_FLAG}
+
+      - name: Commit generated brief archive
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: archive research brief"
+          file_pattern: research_briefs/*.md research_briefs/*.bib

@@ -1,0 +1,11 @@
+﻿__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/
+.idea/
+research_briefs/*.md
+research_briefs/*.bib
+!research_briefs/.gitkeep

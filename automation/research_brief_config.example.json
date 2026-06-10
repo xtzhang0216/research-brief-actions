@@ -1,0 +1,60 @@
+﻿{
+  "recipient_email": "your.email@example.com",
+  "contact_email": "your.email@example.com",
+  "timezone": "Asia/Shanghai",
+  "send_time_local": "08:30",
+  "max_papers": 8,
+  "language": "zh-CN",
+  "save_history": true,
+  "generate_bibtex": true,
+  "journals": [
+    "Nature",
+    "Science",
+    "Cell",
+    "IEEE Transactions on Services Computing",
+    "ACM Transactions on Computer Systems"
+  ],
+  "research_profile": {
+    "summary": "Replace this with your research interests. Example: trustworthy AI systems, scientific machine learning, data-intensive computing, or your own topic.",
+    "seed_papers": [
+      "Replace with 2-5 papers that represent your taste"
+    ],
+    "core_topics": [
+      "artificial intelligence",
+      "machine learning",
+      "computer systems",
+      "data science"
+    ],
+    "method_keywords": [
+      "optimization",
+      "reinforcement learning",
+      "probabilistic modeling",
+      "causal inference",
+      "large language model"
+    ],
+    "objective_keywords": [
+      "accuracy",
+      "latency",
+      "cost",
+      "robustness",
+      "interpretability"
+    ],
+    "domain_keywords": [
+      "artificial intelligence",
+      "machine learning",
+      "computer science",
+      "systems",
+      "data",
+      "network",
+      "biology",
+      "medicine",
+      "materials",
+      "physics"
+    ]
+  },
+  "query_templates": [
+    "artificial intelligence optimization robustness",
+    "machine learning systems resource allocation",
+    "scientific machine learning data-driven discovery"
+  ]
+}
