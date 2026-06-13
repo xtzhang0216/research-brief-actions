@@ -544,6 +544,16 @@ def env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an integer") from exc
+
+
 def send_email_smtp(markdown: str, config: dict[str, Any], run_date: dt.date) -> None:
     host = os.getenv("SMTP_HOST")
     username = os.getenv("SMTP_USERNAME")
@@ -551,7 +561,7 @@ def send_email_smtp(markdown: str, config: dict[str, Any], run_date: dt.date) ->
     if not host or not username or not password:
         raise RuntimeError("Email is not configured. Set either SendGrid secrets or SMTP_HOST + SMTP_USERNAME + SMTP_PASSWORD.")
 
-    port = int(os.getenv("SMTP_PORT", "587"))
+    port = env_int("SMTP_PORT", 587)
     use_ssl = env_bool("SMTP_USE_SSL", port == 465)
     starttls = env_bool("SMTP_STARTTLS", not use_ssl)
     from_email = os.getenv("SMTP_FROM_EMAIL") or os.getenv("RESEARCH_BRIEF_FROM_EMAIL") or username
@@ -564,7 +574,7 @@ def send_email_smtp(markdown: str, config: dict[str, Any], run_date: dt.date) ->
     message.set_content(markdown)
     message.add_alternative(markdown_to_html(markdown), subtype="html")
 
-    retries = int(os.getenv("SMTP_RETRIES", "3"))
+    retries = env_int("SMTP_RETRIES", 3)
     context = ssl.create_default_context()
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
