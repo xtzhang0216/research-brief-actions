@@ -471,8 +471,6 @@ def truncate_text(text: str, limit: int = 900) -> str:
 def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date: dt.date) -> str:
     max_papers = int(config.get("max_papers", 8))
     selected = papers[:max_papers]
-    detailed = selected[:5]
-    remaining = selected[5:]
     high = sum(1 for p in selected if p.get("score", 0) >= 8)
     medium = sum(1 for p in selected if 4 <= p.get("score", 0) < 8)
     language = config.get("language", "en")
@@ -480,9 +478,7 @@ def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date
     if language.lower().startswith("zh"):
         title = f"# 科研简报 | {run_date.isoformat()}"
         summary = f"今日筛出 {len(selected)} 篇候选论文：高相关 {high} 篇，中等相关 {medium} 篇。"
-        priority = "## 今日优先级"
-        details = "## 精读清单"
-        rest = "## 其余候选"
+        paper_list = f"## Top {max_papers} 候选论文"
         advice = "## 今日建议"
         abstract_label = "摘要"
         final_notes = [
@@ -493,9 +489,7 @@ def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date
     else:
         title = f"# Research Brief | {run_date.isoformat()}"
         summary = f"Selected {len(selected)} candidate papers: {high} high relevance, {medium} medium relevance."
-        priority = "## Today's Priority"
-        details = "## Reading List"
-        rest = "## Other Candidates"
+        paper_list = f"## Top {max_papers} Candidate Papers"
         advice = "## Suggested Actions"
         abstract_label = "Abstract"
         final_notes = [
@@ -513,14 +507,8 @@ def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date
     lines.append("")
 
     if selected:
-        lines.append(priority)
-        for idx, paper in enumerate(selected[:3], 1):
-            score = float(paper.get("score", 0))
-            lines.append(f"{idx}. **{paper['title']}** - {score_label(score)}, {score:.1f}; {paper.get('venue') or 'Unknown'}.")
-        lines.append("")
-
-        lines.append(details)
-        for idx, paper in enumerate(detailed, 1):
+        lines.append(paper_list)
+        for idx, paper in enumerate(selected, 1):
             score = float(paper.get("score", 0))
             reasons = ", ".join(paper.get("reasons", [])) or "semantic match"
             url = paper.get("url") or google_scholar_link(paper["title"])
@@ -534,14 +522,6 @@ def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date
             lines.append(f"- Scholar: {google_scholar_link(paper['title'])}")
             lines.append(f"- Relevance: {score_label(score)}, {score:.1f}; matched: {reasons}")
             lines.append(f"**{abstract_label}:** {truncate_text(paper_abstract(paper))}")
-            lines.append("")
-
-        if remaining:
-            lines.append(rest)
-            for idx, paper in enumerate(remaining, len(detailed) + 1):
-                score = float(paper.get("score", 0))
-                url = paper.get("url") or google_scholar_link(paper["title"])
-                lines.append(f"- {idx}. {paper['title']} | {paper.get('venue') or 'Unknown'} | {score_label(score)} {score:.1f} | {url}")
             lines.append("")
 
     lines.append(advice)
