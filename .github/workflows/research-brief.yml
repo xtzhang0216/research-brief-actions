@@ -2,9 +2,8 @@
 
 on:
   schedule:
-    # Default: 08:30 UTC. Run scripts/configure_project.py or ask your AI assistant
-    # to convert your local send time to UTC and update this cron expression.
-    - cron: "30 8 * * *"
+    # 07:30 Asia/Shanghai = 23:30 UTC.
+    - cron: "30 23 * * *"
   workflow_dispatch:
     inputs:
       days_back:
@@ -75,4 +74,3 @@ jobs:
             ZOTERO_FLAG="--zotero"
           fi
           python scripts/generate_research_brief.py --days-back "${DAYS_BACK}" ${EMAIL_FLAG} ${ZOTERO_FLAG}
-

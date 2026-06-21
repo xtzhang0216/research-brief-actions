@@ -24,12 +24,14 @@ from typing import Any
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = ROOT / "automation" / "research_brief_config.json"
-BRIEF_DIR = ROOT / "research_briefs"
+CONFIG_PATH = Path(os.getenv("RESEARCH_BRIEF_CONFIG", ROOT / "automation" / "research_brief_config.json"))
+BRIEF_DIR = Path(os.getenv("RESEARCH_BRIEF_DIR", ROOT / "research_briefs"))
 APP_NAME = "research-brief-actions/1.0"
+UTC = dt.timezone.utc
 
 
 def load_config() -> dict[str, Any]:
@@ -59,6 +61,16 @@ def http_json(url: str, config: dict[str, Any], *, timeout: int = 25) -> dict[st
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8", errors="replace"))
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+        print(f"warning: failed to fetch {url}: {exc}", file=sys.stderr)
+        return None
+
+
+def http_text(url: str, config: dict[str, Any], *, timeout: int = 25) -> str | None:
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent(config)})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
         print(f"warning: failed to fetch {url}: {exc}", file=sys.stderr)
         return None
 
@@ -129,7 +141,7 @@ def inverted_index_to_text(index: dict[str, list[int]] | None) -> str:
 
 def fetch_crossref(config: dict[str, Any], days_back: int) -> list[dict[str, Any]]:
     papers: list[dict[str, Any]] = []
-    since = (dt.datetime.now(dt.UTC).date() - dt.timedelta(days=days_back)).isoformat()
+    since = (dt.datetime.now(UTC).date() - dt.timedelta(days=days_back)).isoformat()
     queries = list(config.get("query_templates", [])) + list(config.get("journals", []))
     for query in queries:
         params = {
@@ -163,7 +175,7 @@ def fetch_crossref(config: dict[str, Any], days_back: int) -> list[dict[str, Any
 
 def fetch_openalex(config: dict[str, Any], days_back: int) -> list[dict[str, Any]]:
     papers: list[dict[str, Any]] = []
-    since = (dt.datetime.now(dt.UTC).date() - dt.timedelta(days=days_back)).isoformat()
+    since = (dt.datetime.now(UTC).date() - dt.timedelta(days=days_back)).isoformat()
     queries = list(config.get("query_templates", [])) + [f'"{j}"' for j in config.get("journals", [])]
     for query in queries:
         params = {
@@ -225,6 +237,63 @@ def fetch_ieee(config: dict[str, Any]) -> list[dict[str, Any]]:
             })
         time.sleep(0.25)
     return [p for p in papers if p.get("title")]
+
+
+def fetch_arxiv(config: dict[str, Any], days_back: int) -> list[dict[str, Any]]:
+    papers: list[dict[str, Any]] = []
+    since = dt.datetime.now(UTC) - dt.timedelta(days=days_back)
+    ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+    for query in config.get("query_templates", []):
+        params = {
+            "search_query": f"all:{query}",
+            "start": "0",
+            "max_results": "20",
+            "sortBy": "submittedDate",
+            "sortOrder": "descending",
+        }
+        data = http_text("https://export.arxiv.org/api/query?" + urllib.parse.urlencode(params), config)
+        if not data:
+            continue
+        try:
+            root = ET.fromstring(data)
+        except ET.ParseError as exc:
+            print(f"warning: failed to parse arXiv response for {query}: {exc}", file=sys.stderr)
+            continue
+        for entry in root.findall("atom:entry", ns):
+            published = normalize_text(entry.findtext("atom:published", default="", namespaces=ns))
+            try:
+                published_dt = dt.datetime.fromisoformat(published.replace("Z", "+00:00"))
+            except ValueError:
+                published_dt = None
+            if published_dt and published_dt < since:
+                continue
+            title = normalize_text(entry.findtext("atom:title", default="", namespaces=ns))
+            if not title:
+                continue
+            authors = [
+                normalize_text(author.findtext("atom:name", default="", namespaces=ns))
+                for author in entry.findall("atom:author", ns)
+            ]
+            categories = [
+                normalize_text(category.attrib.get("term"))
+                for category in entry.findall("atom:category", ns)
+                if category.attrib.get("term")
+            ]
+            doi = normalize_text(entry.findtext("arxiv:doi", default="", namespaces=ns))
+            papers.append({
+                "title": title,
+                "authors": ", ".join(a for a in authors if a) or "Unknown",
+                "affiliations": "Metadata unavailable",
+                "venue": "arXiv",
+                "source": "arXiv",
+                "published": published[:10],
+                "doi": doi,
+                "url": normalize_text(entry.findtext("atom:id", default="", namespaces=ns)),
+                "abstract": normalize_text(entry.findtext("atom:summary", default="", namespaces=ns)),
+                "subjects": ", ".join(categories),
+            })
+        time.sleep(0.25)
+    return papers
 
 
 def dedupe(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -707,6 +776,13 @@ def write_outputs(markdown: str, bibtex: str, run_date: dt.date) -> tuple[Path, 
     return md_path, bib_path
 
 
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days-back", type=int, default=7, help="Search window in days")
@@ -722,6 +798,7 @@ def main() -> int:
     papers: list[dict[str, Any]] = []
     papers.extend(fetch_crossref(config, args.days_back))
     papers.extend(fetch_openalex(config, args.days_back))
+    papers.extend(fetch_arxiv(config, args.days_back))
     papers.extend(fetch_ieee(config))
     ranked = rank_papers(dedupe(papers), config)
     relevant = [p for p in ranked if p.get("score", 0) > 0 and is_domain_match(p, config)]
@@ -730,9 +807,9 @@ def main() -> int:
     markdown = make_markdown(ranked, config, run_date)
     bibtex = make_bibtex(ranked, int(config.get("max_papers", 8))) if config.get("generate_bibtex") else ""
     md_path, bib_path = write_outputs(markdown, bibtex, run_date)
-    print(f"wrote {md_path.relative_to(ROOT)}")
+    print(f"wrote {display_path(md_path)}")
     if bib_path:
-        print(f"wrote {bib_path.relative_to(ROOT)}")
+        print(f"wrote {display_path(bib_path)}")
 
     if not args.dry_run and not args.no_email:
         provider = send_email(markdown, config, run_date)
@@ -750,4 +827,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
