@@ -86,8 +86,51 @@ def date_from_parts(parts: Any) -> str:
         return ""
 
 
+def parse_published_date(value: str) -> dt.date | None:
+    text = normalize_text(value)
+    if not text:
+        return None
+    match = re.search(r"\d{4}(?:-\d{2})?(?:-\d{2})?", text)
+    if not match:
+        return None
+    parts = match.group(0).split("-")
+    try:
+        year = int(parts[0])
+        month = int(parts[1]) if len(parts) > 1 else 1
+        day = int(parts[2]) if len(parts) > 2 else 1
+        return dt.date(year, month, day)
+    except ValueError:
+        return None
+
+
+def is_within_window(paper: dict[str, Any], days_back: int, run_date: dt.date) -> bool:
+    published = parse_published_date(paper.get("published", ""))
+    if published is None:
+        return True
+    return run_date - dt.timedelta(days=days_back) <= published <= run_date + dt.timedelta(days=1)
+
+
+def recency_boost(paper: dict[str, Any], days_back: int, run_date: dt.date) -> float:
+    published = parse_published_date(paper.get("published", ""))
+    if published is None:
+        return 0.0
+    age_days = (run_date - published).days
+    if age_days < 0 or age_days > days_back:
+        return 0.0
+    if days_back <= 0:
+        return 0.0
+    return round(0.8 * (1 - age_days / days_back), 2)
+
+
 def title_key(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", title.lower())[:160]
+
+
+def paper_key(paper: dict[str, Any]) -> str:
+    doi = normalize_text(paper.get("doi")).lower()
+    if doi:
+        return f"doi:{doi}"
+    return f"title:{title_key(paper.get('title', ''))}"
 
 
 def authors_crossref(author_list: list[dict[str, Any]]) -> str:
@@ -300,12 +343,42 @@ def dedupe(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
     for paper in papers:
-        key = paper.get("doi") or title_key(paper.get("title", ""))
+        key = paper_key(paper)
         if not key or key in seen:
             continue
         seen.add(key)
         out.append(paper)
     return out
+
+
+def seen_papers_path() -> Path:
+    return BRIEF_DIR / "seen_papers.json"
+
+
+def load_seen_papers() -> set[str]:
+    path = seen_papers_path()
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"warning: failed to read {display_path(path)}: {exc}", file=sys.stderr)
+        return set()
+    if not isinstance(data, list):
+        print(f"warning: ignoring malformed {display_path(path)}", file=sys.stderr)
+        return set()
+    return {str(item) for item in data if item}
+
+
+def remove_seen_papers(papers: list[dict[str, Any]], seen: set[str]) -> list[dict[str, Any]]:
+    return [paper for paper in papers if paper_key(paper) not in seen]
+
+
+def update_seen_papers(papers: list[dict[str, Any]]) -> None:
+    existing = load_seen_papers()
+    updated = existing | {paper_key(paper) for paper in papers if paper_key(paper)}
+    BRIEF_DIR.mkdir(exist_ok=True)
+    seen_papers_path().write_text(json.dumps(sorted(updated), indent=2) + "\n", encoding="utf-8")
 
 
 def paper_text(paper: dict[str, Any]) -> str:
@@ -336,11 +409,14 @@ def score_paper(paper: dict[str, Any], config: dict[str, Any]) -> tuple[float, l
     return round(score, 2), sorted(set(reasons), key=str.lower)[:12]
 
 
-def rank_papers(papers: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[str, Any]]:
+def rank_papers(papers: list[dict[str, Any]], config: dict[str, Any], days_back: int, run_date: dt.date) -> list[dict[str, Any]]:
     for paper in papers:
         score, reasons = score_paper(paper, config)
-        paper["score"] = score
+        boost = recency_boost(paper, days_back, run_date)
+        paper["score"] = round(score + boost, 2)
         paper["reasons"] = reasons
+        if boost:
+            paper["reasons"] = sorted(set(reasons + ["recent"]), key=str.lower)[:12]
     return sorted(papers, key=lambda p: (p.get("score", 0), p.get("published", "")), reverse=True)
 
 
@@ -770,7 +846,7 @@ def display_path(path: Path) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--days-back", type=int, default=7, help="Search window in days")
+    parser.add_argument("--days-back", type=int, default=30, help="Search window in days")
     parser.add_argument("--dry-run", action="store_true", help="Do not send email or import to Zotero")
     parser.add_argument("--no-email", action="store_true", help="Do not send email")
     parser.add_argument("--zotero", action="store_true", help="Import selected papers to Zotero via the Zotero Web API")
@@ -785,9 +861,11 @@ def main() -> int:
     papers.extend(fetch_openalex(config, args.days_back))
     papers.extend(fetch_arxiv(config, args.days_back))
     papers.extend(fetch_ieee(config))
-    ranked = rank_papers(dedupe(papers), config)
+    recent_papers = [paper for paper in dedupe(papers) if is_within_window(paper, args.days_back, run_date)]
+    ranked = rank_papers(recent_papers, config, args.days_back, run_date)
     relevant = [p for p in ranked if p.get("score", 0) > 0 and is_domain_match(p, config)]
-    ranked = [p for p in relevant if p.get("score", 0) >= 4] or relevant or [p for p in ranked if p.get("score", 0) > 0]
+    relevant = remove_seen_papers(relevant, load_seen_papers())
+    ranked = [p for p in relevant if p.get("score", 0) >= 4] or relevant
 
     markdown = make_markdown(ranked, config, run_date)
     bibtex = make_bibtex(ranked, int(config.get("max_papers", 8))) if config.get("generate_bibtex") else ""
@@ -807,6 +885,9 @@ def main() -> int:
         print(f"zotero import complete: imported {imported}, skipped existing {skipped}")
     elif args.zotero:
         print("zotero import skipped")
+    if not args.dry_run:
+        update_seen_papers(ranked)
+        print(f"updated {display_path(seen_papers_path())}")
     return 0
 
 

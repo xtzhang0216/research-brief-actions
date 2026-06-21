@@ -9,7 +9,7 @@ on:
       days_back:
         description: "Search window in days"
         required: false
-        default: "7"
+        default: "30"
       send_email:
         description: "Send email"
         required: false
@@ -61,7 +61,7 @@ jobs:
           ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
           ZOTERO_GROUP_ID: ${{ secrets.ZOTERO_GROUP_ID }}
           ZOTERO_COLLECTION_KEY: ${{ secrets.ZOTERO_COLLECTION_KEY }}
-          DAYS_BACK: ${{ github.event.inputs.days_back || '7' }}
+          DAYS_BACK: ${{ github.event.inputs.days_back || '30' }}
           SEND_EMAIL: ${{ github.event.inputs.send_email || 'true' }}
           IMPORT_ZOTERO: ${{ github.event.inputs.import_zotero || 'false' }}
         run: |
@@ -74,3 +74,16 @@ jobs:
             ZOTERO_FLAG="--zotero"
           fi
           python scripts/generate_research_brief.py --days-back "${DAYS_BACK}" ${EMAIL_FLAG} ${ZOTERO_FLAG}
+
+      - name: Save sent-paper history
+        if: ${{ github.event.inputs.send_email != 'false' }}
+        run: |
+          if [ -f research_briefs/seen_papers.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add research_briefs/seen_papers.json
+            if ! git diff --cached --quiet; then
+              git commit -m "Update sent-paper history"
+              git push
+            fi
+          fi
