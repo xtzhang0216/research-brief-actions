@@ -8,10 +8,6 @@
   "save_history": true,
   "generate_bibtex": true,
   "journals": [
-    "arXiv",
-    "bioRxiv",
-    "medRxiv",
-    "ChemRxiv",
     "Nature",
     "Science",
     "Cell",

@@ -142,7 +142,7 @@ def inverted_index_to_text(index: dict[str, list[int]] | None) -> str:
 def fetch_crossref(config: dict[str, Any], days_back: int) -> list[dict[str, Any]]:
     papers: list[dict[str, Any]] = []
     since = (dt.datetime.now(UTC).date() - dt.timedelta(days=days_back)).isoformat()
-    queries = list(config.get("query_templates", [])) + list(config.get("journals", []))
+    queries = list(config.get("query_templates", []))
     for query in queries:
         params = {
             "query.bibliographic": query,
@@ -176,7 +176,7 @@ def fetch_crossref(config: dict[str, Any], days_back: int) -> list[dict[str, Any
 def fetch_openalex(config: dict[str, Any], days_back: int) -> list[dict[str, Any]]:
     papers: list[dict[str, Any]] = []
     since = (dt.datetime.now(UTC).date() - dt.timedelta(days=days_back)).isoformat()
-    queries = list(config.get("query_templates", [])) + [f'"{j}"' for j in config.get("journals", [])]
+    queries = list(config.get("query_templates", []))
     for query in queries:
         params = {
             "search": query,
@@ -378,30 +378,15 @@ def score_label(score: float) -> str:
     return "low"
 
 
-def focus_note(paper: dict[str, Any], config: dict[str, Any]) -> str:
-    text = paper_text(paper)
-    profile = config.get("research_profile", {})
-    notes: list[str] = []
-    for keyword in profile.get("core_topics", [])[:8]:
-        if keyword.lower() in text:
-            notes.append(f"matches {keyword}")
-    for keyword in profile.get("method_keywords", [])[:8]:
-        if keyword.lower() in text:
-            notes.append(f"uses or mentions {keyword}")
-    for keyword in profile.get("objective_keywords", [])[:8]:
-        if keyword.lower() in text:
-            notes.append(f"touches {keyword}")
-    if not notes:
-        notes.append("overlaps with your profile through title, venue, or concepts")
-    return "; ".join(notes[:3]) + "."
+def paper_abstract(paper: dict[str, Any]) -> str:
+    abstract = normalize_text(paper.get("abstract"))
+    return abstract or "Metadata unavailable"
 
 
-def action_note(score: float) -> str:
-    if score >= 8:
-        return "Read today: inspect the problem formulation, assumptions, and evaluation setup."
-    if score >= 4:
-        return "Save and skim: check abstract, system model, and baselines before deep reading."
-    return "Low priority: keep only if the title directly supports current writing."
+def truncate_text(text: str, limit: int = 900) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
 
 
 def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date: dt.date) -> str:
@@ -420,8 +405,7 @@ def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date
         details = "## 精读清单"
         rest = "## 其余候选"
         advice = "## 今日建议"
-        why = "为什么值得看"
-        action = "建议动作"
+        abstract_label = "摘要"
         final_notes = [
             "优先阅读高相关论文；中等相关论文先看摘要、问题定义和实验设置。",
             "如果候选过少，请放宽 query_templates；如果跑题太多，请收紧 domain_keywords。",
@@ -434,8 +418,7 @@ def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date
         details = "## Reading List"
         rest = "## Other Candidates"
         advice = "## Suggested Actions"
-        why = "Why it matters"
-        action = "Action"
+        abstract_label = "Abstract"
         final_notes = [
             "Read high-relevance papers first; skim medium-relevance papers for problem formulation and experiments.",
             "If there are too few papers, broaden query_templates; if results drift, tighten domain_keywords.",
@@ -471,8 +454,7 @@ def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date
             lines.append(f"- Link: {url}")
             lines.append(f"- Scholar: {google_scholar_link(paper['title'])}")
             lines.append(f"- Relevance: {score_label(score)}, {score:.1f}; matched: {reasons}")
-            lines.append(f"**{why}:** {focus_note(paper, config)}")
-            lines.append(f"**{action}:** {action_note(score)}")
+            lines.append(f"**{abstract_label}:** {truncate_text(paper_abstract(paper))}")
             lines.append("")
 
         if remaining:
