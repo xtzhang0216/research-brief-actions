@@ -350,6 +350,9 @@ def has_any(text: str, terms: list[str]) -> bool:
 
 def is_domain_match(paper: dict[str, Any], config: dict[str, Any]) -> bool:
     profile = config.get("research_profile", {})
+    required_terms = profile.get("required_core_terms", [])
+    if required_terms and not has_any(paper_text(paper), required_terms):
+        return False
     venue = paper.get("venue", "").lower()
     if any(journal.lower() in venue for journal in config.get("journals", [])):
         return True

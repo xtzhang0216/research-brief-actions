@@ -43,6 +43,17 @@
       "Small-molecule induced protein-protein interactions for therapeutic discovery",
       "Chemical biology approaches to E3 ligase recruitment, neosubstrate recognition, and non-degradative induced proximity"
     ],
+    "required_core_terms": [
+      "molecular glue",
+      "molecular glues",
+      "compound-induced proximity",
+      "induced proximity",
+      "neosubstrate",
+      "neo-substrate",
+      "E3 ligase",
+      "cereblon",
+      "CRBN"
+    ],
     "core_topics": [
       "molecular glue",
       "molecular glues",
@@ -95,19 +106,12 @@
       "medicinal chemistry"
     ],
     "objective_keywords": [
-      "selectivity",
-      "potency",
       "degradation",
       "stabilization",
-      "activation",
-      "inhibition",
       "allosteric modulation",
       "ternary complex formation",
       "target engagement",
-      "mechanism of action",
-      "resistance",
-      "bioavailability",
-      "clinical translation"
+      "mechanism of action"
     ],
     "domain_keywords": [
       "molecular glue",
@@ -120,8 +124,6 @@
       "cereblon",
       "chemical biology",
       "medicinal chemistry",
-      "oncology",
-      "immunology",
       "protein-protein interaction",
       "complex stabilization",
       "allosteric",
