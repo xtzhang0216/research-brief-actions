@@ -75,6 +75,54 @@ def http_text(url: str, config: dict[str, Any], *, timeout: int = 25) -> str | N
         return None
 
 
+def meta_content(page: str, names: list[str]) -> str:
+    for name in names:
+        patterns = [
+            rf'<meta[^>]+(?:property|name)=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']+)["\']',
+            rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']{re.escape(name)}["\']',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, page, flags=re.IGNORECASE)
+            if match:
+                return html.unescape(match.group(1).strip())
+    return ""
+
+
+def link_href(page: str, rels: list[str]) -> str:
+    for rel in rels:
+        patterns = [
+            rf'<link[^>]+rel=["\'][^"\']*{re.escape(rel)}[^"\']*["\'][^>]+href=["\']([^"\']+)["\']',
+            rf'<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\'][^"\']*{re.escape(rel)}[^"\']*["\']',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, page, flags=re.IGNORECASE)
+            if match:
+                return html.unescape(match.group(1).strip())
+    return ""
+
+
+def fetch_cover_image_url(paper: dict[str, Any], config: dict[str, Any]) -> str:
+    landing_url = paper.get("url")
+    if not landing_url or not str(landing_url).startswith("http"):
+        return ""
+    page = http_text(landing_url, config, timeout=3)
+    if not page:
+        return ""
+    image = meta_content(page, ["og:image", "twitter:image", "citation_image"]) or link_href(page, ["image_src"])
+    if not image:
+        return ""
+    return urllib.parse.urljoin(landing_url, image)
+
+
+def add_cover_images(papers: list[dict[str, Any]], config: dict[str, Any], limit: int = 3) -> None:
+    for paper in papers[:limit]:
+        if paper.get("image_url"):
+            continue
+        image_url = fetch_cover_image_url(paper, config)
+        if image_url:
+            paper["image_url"] = image_url
+
+
 def date_from_parts(parts: Any) -> str:
     try:
         date_parts = parts["date-parts"][0]
@@ -458,14 +506,15 @@ def score_label(score: float) -> str:
 
 
 def paper_abstract(paper: dict[str, Any]) -> str:
-    abstract = normalize_text(paper.get("abstract"))
+    abstract = normalize_text(re.sub(r"<[^>]+>", " ", str(paper.get("abstract") or "")))
     return abstract or "Metadata unavailable"
 
 
-def truncate_text(text: str, limit: int = 900) -> str:
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "..."
+def cover_image_markdown(paper: dict[str, Any]) -> str:
+    image_url = paper.get("image_url")
+    if not image_url:
+        return ""
+    return f"![Paper image]({image_url})"
 
 
 def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date: dt.date) -> str:
@@ -521,7 +570,10 @@ def make_markdown(papers: list[dict[str, Any]], config: dict[str, Any], run_date
             lines.append(f"- Link: {url}")
             lines.append(f"- Scholar: {google_scholar_link(paper['title'])}")
             lines.append(f"- Relevance: {score_label(score)}, {score:.1f}; matched: {reasons}")
-            lines.append(f"**{abstract_label}:** {truncate_text(paper_abstract(paper))}")
+            image_markdown = cover_image_markdown(paper)
+            if image_markdown:
+                lines.append(image_markdown)
+            lines.append(f"**{abstract_label}:** {paper_abstract(paper)}")
             lines.append("")
 
     lines.append(advice)
@@ -562,6 +614,13 @@ def markdown_to_html(markdown: str) -> str:
         elif line.startswith("### "):
             close_lists()
             html_lines.append(f"<h3 style=\"font-size:15px;line-height:1.45;margin:18px 0 8px;color:#111827;\">{inline_html(line[4:])}</h3>")
+        elif re.match(r"!\[[^\]]*\]\(https?://[^\s)]+\)", line):
+            close_lists()
+            match = re.match(r"!\[([^\]]*)\]\((https?://[^\s)]+)\)", line)
+            assert match is not None
+            alt = html.escape(match.group(1) or "Paper image")
+            src = html.escape(match.group(2))
+            html_lines.append(f'<img src="{src}" alt="{alt}" style="max-width:100%;height:auto;border:1px solid #e5e7eb;border-radius:6px;margin:8px 0 10px;">')
         elif re.match(r"\d+\. ", line):
             if not list_stack or list_stack[-1] != "ol":
                 close_lists()
@@ -846,6 +905,7 @@ def main() -> int:
     relevant = [p for p in ranked if p.get("score", 0) > 0 and is_domain_match(p, config)]
     relevant = remove_seen_papers(relevant, load_seen_papers())
     ranked = [p for p in relevant if p.get("score", 0) >= 4] or relevant
+    add_cover_images(ranked, config)
 
     markdown = make_markdown(ranked, config, run_date)
     bibtex = make_bibtex(ranked, int(config.get("max_papers", 8))) if config.get("generate_bibtex") else ""
