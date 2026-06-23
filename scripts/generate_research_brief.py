@@ -399,6 +399,26 @@ def dedupe(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def is_excluded_record(paper: dict[str, Any]) -> bool:
+    title = normalize_text(paper.get("title")).lower()
+    if not title:
+        return True
+    patterns = [
+        r"^supplementary\s+(figure|fig\.?|table|data|dataset|note|file|material|materials|movie|video|appendix)\b",
+        r"^supplemental\s+(figure|fig\.?|table|data|dataset|note|file|material|materials|movie|video|appendix)\b",
+        r"^extended\s+data\s+(figure|fig\.?|table)\b",
+        r"^source\s+data\b",
+        r"^data\s+availability\b",
+        r"^additional\s+file\b",
+        r"^appendix\s+(figure|fig\.?|table|data)\b",
+    ]
+    return any(re.search(pattern, title) for pattern in patterns)
+
+
+def remove_excluded_records(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [paper for paper in papers if not is_excluded_record(paper)]
+
+
 def seen_papers_path() -> Path:
     return BRIEF_DIR / "seen_papers.json"
 
@@ -900,7 +920,7 @@ def main() -> int:
     papers.extend(fetch_openalex(config, args.days_back))
     papers.extend(fetch_arxiv(config, args.days_back))
     papers.extend(fetch_ieee(config))
-    recent_papers = [paper for paper in dedupe(papers) if is_within_window(paper, args.days_back, run_date)]
+    recent_papers = [paper for paper in remove_excluded_records(dedupe(papers)) if is_within_window(paper, args.days_back, run_date)]
     ranked = rank_papers(recent_papers, config, args.days_back, run_date)
     relevant = [p for p in ranked if p.get("score", 0) > 0 and is_domain_match(p, config)]
     relevant = remove_seen_papers(relevant, load_seen_papers())
