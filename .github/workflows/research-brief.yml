@@ -2,8 +2,8 @@
 
 on:
   schedule:
-    # 07:30 Asia/Shanghai = 23:30 UTC.
-    - cron: "30 23 * * *"
+    # 03:00 Asia/Shanghai = 19:00 UTC.
+    - cron: "0 19 * * *"
   workflow_dispatch:
     inputs:
       days_back:
