@@ -411,6 +411,8 @@ def is_excluded_record(paper: dict[str, Any]) -> bool:
         r"^data\s+availability\b",
         r"^additional\s+file\b",
         r"^appendix\s+(figure|fig\.?|table|data)\b",
+        r"^abstract\s+[a-z]{0,4}\d+[a-z0-9-]*\b",
+        r"^abstract\s+(poster|oral|session|presentation)\b",
     ]
     return any(re.search(pattern, title) for pattern in patterns)
 
